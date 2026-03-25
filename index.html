@@ -1,0 +1,690 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <meta name="theme-color" content="#e8a04e" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Tag Studio" />
+  <meta name="description" content="Edit MP3 metadata, cover art, and tags directly in your browser." />
+  <link rel="manifest" href="manifest.json" />
+  <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192x192.png" />
+  <link rel="apple-touch-icon" href="icons/icon-192x192.png" />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <title>Tag Studio — MP3 Metadata Editor</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0d0d0d;
+      --surface: #161618;
+      --surface-hover: #1e1e22;
+      --border: #2a2a2e;
+      --border-active: #e8a04e;
+      --text: #e8e6e1;
+      --text-muted: #8a8880;
+      --accent: #e8a04e;
+      --accent-dim: #b8803e;
+      --accent-glow: rgba(232, 160, 78, 0.15);
+      --danger: #d44;
+      --success: #5a9;
+      --font-display: 'DM Serif Display', Georgia, serif;
+      --font-body: 'IBM Plex Sans', -apple-system, sans-serif;
+      --font-mono: 'IBM Plex Mono', monospace;
+    }
+
+    html, body {
+      height: 100%;
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--font-body);
+      -webkit-font-smoothing: antialiased;
+      overflow-x: hidden;
+    }
+
+    body {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 40px 20px;
+      min-height: 100vh;
+    }
+
+    /* Header */
+    .header { text-align: center; margin-bottom: 36px; max-width: 600px; }
+    .header-row { display: inline-flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+    .header h1 {
+      font-family: var(--font-display);
+      font-size: 32px;
+      font-weight: 400;
+      letter-spacing: -0.01em;
+    }
+    .header p { font-size: 14px; color: var(--text-muted); line-height: 1.5; }
+
+    /* Drop Zone */
+    .dropzone {
+      width: 100%;
+      max-width: 720px;
+      border: 2px dashed var(--border);
+      border-radius: 12px;
+      padding: 60px 40px;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.3s ease;
+    }
+    .dropzone.active { border-color: var(--accent); background: var(--accent-glow); }
+    .dropzone:hover { border-color: var(--accent-dim); }
+    .dropzone h2 { font-size: 16px; font-weight: 500; margin: 16px 0 6px; }
+    .dropzone p { font-size: 13px; color: var(--text-muted); }
+    .dropzone svg { color: var(--text-muted); }
+    .dropzone.active svg { color: var(--accent); }
+
+    /* Editor */
+    .editor { width: 100%; max-width: 720px; display: flex; flex-direction: column; gap: 24px; }
+
+    /* File bar */
+    .file-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 16px;
+      background: var(--surface);
+      border-radius: 8px;
+      border: 1px solid var(--border);
+    }
+    .file-bar-left { display: flex; align-items: center; gap: 10px; overflow: hidden; }
+    .file-bar-name {
+      font-size: 13px;
+      font-family: var(--font-mono);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .file-bar-size { font-size: 11px; color: var(--text-muted); flex-shrink: 0; }
+    .file-bar-close {
+      background: none; border: none; color: var(--text-muted);
+      cursor: pointer; font-size: 20px; padding: 4px 8px; line-height: 1;
+    }
+    .file-bar-close:hover { color: var(--text); }
+
+    /* Cover + primary row */
+    .primary-row { display: flex; gap: 24px; flex-wrap: wrap; }
+
+    /* Cover Art */
+    .cover-wrap {
+      width: 200px; height: 200px; min-width: 200px;
+      border-radius: 8px; overflow: hidden;
+      cursor: pointer; position: relative;
+      border: 1.5px dashed var(--border);
+      transition: all 0.3s ease;
+      background: linear-gradient(135deg, var(--surface) 0%, #1a1a1e 100%);
+    }
+    .cover-wrap.has-art { border: 1.5px solid transparent; box-shadow: 0 8px 32px rgba(0,0,0,0.5); }
+    .cover-wrap img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .cover-placeholder {
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      height: 100%; color: var(--text-muted); gap: 8px; font-size: 13px;
+    }
+    .cover-overlay {
+      position: absolute; inset: 0; background: rgba(0,0,0,0.55);
+      display: flex; align-items: center; justify-content: center;
+      opacity: 0; transition: opacity 0.2s; border-radius: 8px;
+      color: #fff; font-size: 13px; font-weight: 500;
+    }
+    .cover-wrap:hover .cover-overlay { opacity: 1; }
+
+    /* Fields */
+    .primary-fields { flex: 1; min-width: 220px; display: flex; flex-direction: column; gap: 14px; }
+
+    .field { display: flex; flex-direction: column; gap: 5px; }
+    .field label {
+      font-size: 11px; font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase; letter-spacing: 0.08em;
+    }
+    .field input {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 10px 12px;
+      color: var(--text);
+      font-size: 14px;
+      font-family: var(--font-body);
+      outline: none;
+      transition: border-color 0.2s, box-shadow 0.2s;
+      width: 100%;
+    }
+    .field input.small { padding: 8px 10px; font-size: 13px; }
+    .field input.mono { font-family: var(--font-mono); }
+    .field input:focus {
+      border-color: var(--border-active);
+      box-shadow: 0 0 0 3px var(--accent-glow);
+    }
+
+    .secondary-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(155px, 1fr));
+      gap: 14px;
+    }
+
+    /* Actions */
+    .actions {
+      display: flex; gap: 12px; justify-content: flex-end;
+      padding-top: 8px; border-top: 1px solid var(--border);
+      flex-wrap: wrap;
+    }
+
+    .btn {
+      padding: 10px 20px; border-radius: 6px; border: none;
+      font-size: 13px; font-family: var(--font-body); font-weight: 500;
+      cursor: pointer; transition: all 0.2s; letter-spacing: 0.02em;
+    }
+    .btn:hover { transform: translateY(-1px); }
+    .btn:active { transform: translateY(0); }
+    .btn-primary { background: var(--accent); color: #0d0d0d; font-weight: 600; }
+    .btn-secondary { background: transparent; color: var(--text); border: 1px solid var(--border); }
+    .btn-remove-art { background: transparent; color: var(--danger); border: 1px solid rgba(221,68,68,0.2); }
+
+    /* Status */
+    .status {
+      padding: 10px 14px; border-radius: 6px;
+      font-size: 13px; font-family: var(--font-mono);
+    }
+    .status.error { background: rgba(221,68,68,0.08); color: var(--danger); border: 1px solid rgba(221,68,68,0.2); }
+    .status.success { background: rgba(85,170,153,0.08); color: var(--success); border: 1px solid rgba(85,170,153,0.2); }
+    .status.info { background: rgba(232,160,78,0.06); color: var(--accent); border: 1px solid rgba(232,160,78,0.13); }
+
+    /* Footer */
+    .footer {
+      margin-top: 60px; font-size: 11px;
+      color: rgba(138,136,128,0.5);
+      font-family: var(--font-mono); letter-spacing: 0.05em;
+    }
+
+    /* Install banner */
+    .install-banner {
+      width: 100%; max-width: 720px;
+      margin-bottom: 20px; padding: 12px 16px;
+      background: var(--accent-glow); border: 1px solid rgba(232,160,78,0.25);
+      border-radius: 8px;
+      display: flex; align-items: center; justify-content: space-between;
+      gap: 12px; flex-wrap: wrap;
+    }
+    .install-banner p { font-size: 13px; color: var(--text); }
+    .install-banner .btn { padding: 7px 16px; font-size: 12px; }
+    .install-dismiss { background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 18px; padding: 2px 6px; }
+
+    /* Mobile tweaks */
+    @media (max-width: 520px) {
+      body { padding: 24px 14px; }
+      .header h1 { font-size: 26px; }
+      .dropzone { padding: 40px 20px; }
+      .cover-wrap { width: 160px; height: 160px; min-width: 160px; }
+      .primary-row { flex-direction: column; align-items: center; }
+      .primary-fields { min-width: 0; width: 100%; }
+      .secondary-grid { grid-template-columns: repeat(2, 1fr); }
+      .actions { justify-content: stretch; }
+      .actions .btn { flex: 1; text-align: center; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Header -->
+  <div class="header">
+    <div class="header-row">
+      <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#e8a04e" stroke-width="1.8">
+        <path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>
+      </svg>
+      <h1>Tag Studio</h1>
+    </div>
+    <p>Edit MP3 metadata — titles, artists, albums, cover art and more.</p>
+  </div>
+
+  <!-- Install Banner (hidden by default) -->
+  <div class="install-banner" id="installBanner" style="display:none;">
+    <p>Install Tag Studio for offline use</p>
+    <div style="display:flex;gap:8px;align-items:center;">
+      <button class="btn btn-primary" id="installBtn" style="padding:7px 16px;font-size:12px;">Install</button>
+      <button class="install-dismiss" id="installDismiss">×</button>
+    </div>
+  </div>
+
+  <!-- Main Content Container -->
+  <div id="app" style="width:100%;max-width:720px;"></div>
+
+  <!-- Footer -->
+  <div class="footer">ALL PROCESSING HAPPENS LOCALLY IN YOUR BROWSER</div>
+
+  <!-- Hidden file inputs -->
+  <input type="file" id="fileInput" accept=".mp3,audio/mpeg" style="display:none" />
+  <input type="file" id="coverInput" accept="image/jpeg,image/png,image/webp" style="display:none" />
+
+<script>
+// ═══════════════════════════════════════
+//  ID3v2 Tag Parser & Writer
+// ═══════════════════════════════════════
+
+const ID3 = (() => {
+  function encodeUTF16LE(str) {
+    const buf = new Uint8Array(str.length * 2);
+    for (let i = 0; i < str.length; i++) {
+      const code = str.charCodeAt(i);
+      buf[i * 2] = code & 0xff;
+      buf[i * 2 + 1] = (code >> 8) & 0xff;
+    }
+    return buf;
+  }
+
+  function encodeUTF8(str) { return new TextEncoder().encode(str); }
+
+  function createTextFrame(id, text) {
+    const encoding = 1;
+    const bom = new Uint8Array([0xff, 0xfe]);
+    const textBytes = encodeUTF16LE(text);
+    const frameSize = 1 + bom.length + textBytes.length;
+    const header = new Uint8Array(10);
+    header.set(encodeUTF8(id), 0);
+    header[4] = (frameSize >> 24) & 0xff;
+    header[5] = (frameSize >> 16) & 0xff;
+    header[6] = (frameSize >> 8) & 0xff;
+    header[7] = frameSize & 0xff;
+    const frame = new Uint8Array(10 + frameSize);
+    frame.set(header, 0);
+    frame[10] = encoding;
+    frame.set(bom, 11);
+    frame.set(textBytes, 13);
+    return frame;
+  }
+
+  function createAPICFrame(imageBytes, mimeType) {
+    const mimeBytes = encodeUTF8(mimeType);
+    const frameSize = 1 + mimeBytes.length + 1 + 1 + 1 + imageBytes.length;
+    const header = new Uint8Array(10);
+    header.set(encodeUTF8("APIC"), 0);
+    header[4] = (frameSize >> 24) & 0xff;
+    header[5] = (frameSize >> 16) & 0xff;
+    header[6] = (frameSize >> 8) & 0xff;
+    header[7] = frameSize & 0xff;
+    const frame = new Uint8Array(10 + frameSize);
+    let o = 0;
+    frame.set(header, o); o += 10;
+    frame[o++] = 0; // encoding: ISO-8859-1
+    frame.set(mimeBytes, o); o += mimeBytes.length;
+    frame[o++] = 0; // null term
+    frame[o++] = 3; // cover front
+    frame[o++] = 0; // empty desc
+    frame.set(new Uint8Array(imageBytes), o);
+    return frame;
+  }
+
+  function findAudioStart(buffer) {
+    const v = new DataView(buffer);
+    if (v.getUint8(0) === 0x49 && v.getUint8(1) === 0x44 && v.getUint8(2) === 0x33) {
+      const size = ((v.getUint8(6) & 0x7f) << 21) | ((v.getUint8(7) & 0x7f) << 14) |
+                   ((v.getUint8(8) & 0x7f) << 7) | (v.getUint8(9) & 0x7f);
+      return 10 + size;
+    }
+    return 0;
+  }
+
+  function parseFrames(buffer) {
+    const v = new DataView(buffer);
+    const frames = {};
+    let coverArt = null;
+
+    if (v.getUint8(0) !== 0x49 || v.getUint8(1) !== 0x44 || v.getUint8(2) !== 0x33)
+      return { frames, coverArt };
+
+    const tagSize = ((v.getUint8(6) & 0x7f) << 21) | ((v.getUint8(7) & 0x7f) << 14) |
+                    ((v.getUint8(8) & 0x7f) << 7) | (v.getUint8(9) & 0x7f);
+
+    let offset = 10;
+    const end = 10 + tagSize;
+
+    while (offset < end - 10) {
+      const fid = String.fromCharCode(v.getUint8(offset), v.getUint8(offset+1), v.getUint8(offset+2), v.getUint8(offset+3));
+      if (fid[0] === "\0") break;
+      const fsize = (v.getUint8(offset+4) << 24) | (v.getUint8(offset+5) << 16) | (v.getUint8(offset+6) << 8) | v.getUint8(offset+7);
+      if (fsize <= 0 || offset + 10 + fsize > end) break;
+      const fdata = new Uint8Array(buffer, offset + 10, fsize);
+
+      if (fid === "APIC") {
+        try {
+          let p = 1; let mime = "";
+          while (p < fdata.length && fdata[p] !== 0) mime += String.fromCharCode(fdata[p++]);
+          p++; p++; // null + pic type
+          const enc = fdata[0];
+          if (enc === 0 || enc === 3) { while (p < fdata.length && fdata[p] !== 0) p++; p++; }
+          else { while (p < fdata.length - 1 && !(fdata[p] === 0 && fdata[p+1] === 0)) p += 2; p += 2; }
+          const imgData = fdata.slice(p);
+          const blob = new Blob([imgData], { type: mime || "image/jpeg" });
+          coverArt = { url: URL.createObjectURL(blob), mime: mime || "image/jpeg", data: imgData };
+        } catch(e) {}
+      } else if (["TIT2","TPE1","TALB","TRCK","TYER","TDRC","TCON","TPE2","TCOM","TPOS"].includes(fid)) {
+        try {
+          const enc = fdata[0]; let text = "";
+          if (enc === 0 || enc === 3) {
+            if (enc === 3) { text = new TextDecoder("utf-8").decode(fdata.slice(1)).replace(/\0/g,""); }
+            else { for (let i = 1; i < fdata.length && fdata[i] !== 0; i++) text += String.fromCharCode(fdata[i]); }
+          } else if (enc === 1 || enc === 2) {
+            let s = 1, le = true;
+            if (fdata[1] === 0xff && fdata[2] === 0xfe) { le = true; s = 3; }
+            else if (fdata[1] === 0xfe && fdata[2] === 0xff) { le = false; s = 3; }
+            for (let i = s; i < fdata.length - 1; i += 2) {
+              const c = le ? fdata[i] | (fdata[i+1] << 8) : (fdata[i] << 8) | fdata[i+1];
+              if (c === 0) break;
+              text += String.fromCharCode(c);
+            }
+          }
+          frames[fid] = text;
+        } catch(e) {}
+      }
+      offset += 10 + fsize;
+    }
+    return { frames, coverArt };
+  }
+
+  function writeTag(audioBuffer, metadata, coverImageData) {
+    const audioStart = findAudioStart(audioBuffer);
+    const audioData = new Uint8Array(audioBuffer, audioStart);
+    const allFrames = [];
+
+    const map = { title:"TIT2", artist:"TPE1", album:"TALB", track:"TRCK", year:"TDRC", genre:"TCON", albumArtist:"TPE2", composer:"TCOM", disc:"TPOS" };
+    for (const [k, fid] of Object.entries(map)) {
+      if (metadata[k] && metadata[k].trim()) allFrames.push(createTextFrame(fid, metadata[k]));
+    }
+    if (coverImageData) allFrames.push(createAPICFrame(coverImageData.data, coverImageData.mime));
+
+    let framesSize = 0;
+    for (const f of allFrames) framesSize += f.length;
+    const padding = 1024;
+    const tagSize = framesSize + padding;
+
+    const header = new Uint8Array(10);
+    header[0] = 0x49; header[1] = 0x44; header[2] = 0x33;
+    header[3] = 3; header[4] = 0; header[5] = 0;
+    header[6] = (tagSize >> 21) & 0x7f;
+    header[7] = (tagSize >> 14) & 0x7f;
+    header[8] = (tagSize >> 7) & 0x7f;
+    header[9] = tagSize & 0x7f;
+
+    const result = new Uint8Array(10 + tagSize + audioData.length);
+    let o = 0;
+    result.set(header, o); o += 10;
+    for (const f of allFrames) { result.set(f, o); o += f.length; }
+    o += padding;
+    result.set(audioData, o);
+    return result;
+  }
+
+  return { parseFrames, writeTag };
+})();
+
+
+// ═══════════════════════════════════════
+//  App State & Logic
+// ═══════════════════════════════════════
+
+let state = {
+  file: null,
+  audioBuffer: null,
+  metadata: { title:"", artist:"", album:"", track:"", year:"", genre:"", albumArtist:"", composer:"", disc:"" },
+  coverArt: null,
+  coverPreview: null,
+  status: null,
+};
+
+const app = document.getElementById("app");
+const fileInput = document.getElementById("fileInput");
+const coverInput = document.getElementById("coverInput");
+
+function setStatus(type, msg) {
+  state.status = { type, msg };
+  render();
+  if (type === "success") setTimeout(() => { if (state.status?.msg === msg) { state.status = null; render(); } }, 4000);
+}
+
+async function loadFile(f) {
+  if (!f || !f.name.toLowerCase().endsWith(".mp3")) {
+    setStatus("error", "Please select an MP3 file");
+    return;
+  }
+  setStatus("info", "Reading file...");
+  const buffer = await f.arrayBuffer();
+  state.audioBuffer = buffer;
+  state.file = f;
+  const { frames, coverArt } = ID3.parseFrames(buffer);
+  state.metadata = {
+    title: frames.TIT2 || "", artist: frames.TPE1 || "", album: frames.TALB || "",
+    track: frames.TRCK || "", year: frames.TDRC || frames.TYER || "",
+    genre: frames.TCON || "", albumArtist: frames.TPE2 || "",
+    composer: frames.TCOM || "", disc: frames.TPOS || "",
+  };
+  state.coverArt = coverArt;
+  state.coverPreview = coverArt ? coverArt.url : null;
+  setStatus("success", "Loaded: " + f.name);
+}
+
+async function handleCoverUpload(imageFile) {
+  const buffer = await imageFile.arrayBuffer();
+  const url = URL.createObjectURL(imageFile);
+  state.coverArt = { url, mime: imageFile.type || "image/jpeg", data: new Uint8Array(buffer) };
+  state.coverPreview = url;
+  render();
+}
+
+function removeCover() {
+  state.coverArt = null;
+  state.coverPreview = null;
+  render();
+}
+
+function handleSave() {
+  if (!state.audioBuffer) return;
+  setStatus("info", "Writing tags...");
+  try {
+    const result = ID3.writeTag(state.audioBuffer, state.metadata, state.coverArt);
+    const blob = new Blob([result], { type: "audio/mpeg" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = state.file?.name || "edited.mp3";
+    a.click();
+    URL.revokeObjectURL(url);
+    setStatus("success", "File saved successfully!");
+  } catch (err) {
+    setStatus("error", "Error: " + err.message);
+  }
+}
+
+function handleClear() {
+  state = {
+    file: null, audioBuffer: null,
+    metadata: { title:"", artist:"", album:"", track:"", year:"", genre:"", albumArtist:"", composer:"", disc:"" },
+    coverArt: null, coverPreview: null, status: null,
+  };
+  render();
+}
+
+
+// ═══════════════════════════════════════
+//  Render
+// ═══════════════════════════════════════
+
+function render() {
+  if (!state.file) {
+    app.innerHTML = `
+      <div class="dropzone" id="dropzone">
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3">
+          <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+          <polyline points="17 8 12 3 7 8"/>
+          <line x1="12" y1="3" x2="12" y2="15"/>
+        </svg>
+        <h2>Drop an MP3 file here</h2>
+        <p>or tap to browse</p>
+      </div>
+    `;
+    bindDropzone();
+  } else {
+    const m = state.metadata;
+    app.innerHTML = `
+      <div class="editor">
+        <!-- File bar -->
+        <div class="file-bar">
+          <div class="file-bar-left">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#e8a04e" stroke-width="2">
+              <path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>
+            </svg>
+            <span class="file-bar-name">${esc(state.file.name)}</span>
+            <span class="file-bar-size">(${(state.file.size/1024/1024).toFixed(1)} MB)</span>
+          </div>
+          <button class="file-bar-close" id="clearBtn" title="Remove file">×</button>
+        </div>
+
+        <!-- Cover + Primary -->
+        <div class="primary-row">
+          <div class="cover-wrap ${state.coverPreview ? 'has-art' : ''}" id="coverWrap">
+            ${state.coverPreview
+              ? `<img src="${state.coverPreview}" alt="Cover art"/>`
+              : `<div class="cover-placeholder">
+                  <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                    <rect x="3" y="3" width="18" height="18" rx="2"/>
+                    <circle cx="8.5" cy="8.5" r="1.5"/>
+                    <path d="M21 15l-5-5L5 21"/>
+                  </svg>
+                  <span>Add cover art</span>
+                </div>`
+            }
+            <div class="cover-overlay">${state.coverPreview ? 'Change artwork' : 'Upload image'}</div>
+          </div>
+          <div class="primary-fields">
+            ${field("Title", "title", m.title, "Track title")}
+            ${field("Artist", "artist", m.artist, "Artist name")}
+            ${field("Album", "album", m.album, "Album name")}
+          </div>
+        </div>
+
+        <!-- Secondary grid -->
+        <div class="secondary-grid">
+          ${field("Album Artist", "albumArtist", m.albumArtist, "Album artist", true)}
+          ${field("Composer", "composer", m.composer, "Composer", true)}
+          ${field("Genre", "genre", m.genre, "Genre", true)}
+          ${field("Year", "year", m.year, "2025", true, true)}
+          ${field("Track #", "track", m.track, "1/12", true, true)}
+          ${field("Disc #", "disc", m.disc, "1/1", true, true)}
+        </div>
+
+        <!-- Actions -->
+        <div class="actions">
+          ${state.coverPreview ? '<button class="btn btn-remove-art" id="removeCoverBtn">Remove Art</button>' : ''}
+          <button class="btn btn-secondary" id="discardBtn">Discard</button>
+          <button class="btn btn-primary" id="saveBtn">Save MP3</button>
+        </div>
+
+        <!-- Status -->
+        ${state.status ? `<div class="status ${state.status.type}">${esc(state.status.msg)}</div>` : ''}
+      </div>
+    `;
+    bindEditor();
+  }
+}
+
+function field(label, key, value, placeholder, small, mono) {
+  return `
+    <div class="field">
+      <label>${label}</label>
+      <input type="text" data-key="${key}" value="${esc(value)}" placeholder="${placeholder}"
+             class="${small ? 'small' : ''} ${mono ? 'mono' : ''}" />
+    </div>
+  `;
+}
+
+function esc(str) {
+  return String(str).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+}
+
+
+// ═══════════════════════════════════════
+//  Event Binding
+// ═══════════════════════════════════════
+
+function bindDropzone() {
+  const dz = document.getElementById("dropzone");
+  if (!dz) return;
+  dz.addEventListener("click", () => fileInput.click());
+  dz.addEventListener("dragover", e => { e.preventDefault(); dz.classList.add("active"); });
+  dz.addEventListener("dragleave", () => dz.classList.remove("active"));
+  dz.addEventListener("drop", e => { e.preventDefault(); dz.classList.remove("active"); const f = e.dataTransfer.files?.[0]; if (f) loadFile(f); });
+}
+
+function bindEditor() {
+  document.getElementById("clearBtn")?.addEventListener("click", handleClear);
+  document.getElementById("discardBtn")?.addEventListener("click", handleClear);
+  document.getElementById("saveBtn")?.addEventListener("click", handleSave);
+  document.getElementById("removeCoverBtn")?.addEventListener("click", removeCover);
+  document.getElementById("coverWrap")?.addEventListener("click", () => coverInput.click());
+
+  document.querySelectorAll("input[data-key]").forEach(inp => {
+    inp.addEventListener("input", e => {
+      state.metadata[e.target.dataset.key] = e.target.value;
+    });
+  });
+}
+
+fileInput.addEventListener("change", e => { const f = e.target.files?.[0]; if (f) loadFile(f); fileInput.value = ""; });
+coverInput.addEventListener("change", e => { const f = e.target.files?.[0]; if (f) handleCoverUpload(f); coverInput.value = ""; });
+
+
+// ═══════════════════════════════════════
+//  PWA Install Prompt
+// ═══════════════════════════════════════
+
+let deferredPrompt = null;
+const installBanner = document.getElementById("installBanner");
+const installBtn = document.getElementById("installBtn");
+const installDismiss = document.getElementById("installDismiss");
+
+window.addEventListener("beforeinstallprompt", (e) => {
+  e.preventDefault();
+  deferredPrompt = e;
+  installBanner.style.display = "flex";
+});
+
+installBtn?.addEventListener("click", async () => {
+  if (!deferredPrompt) return;
+  deferredPrompt.prompt();
+  const result = await deferredPrompt.userChoice;
+  deferredPrompt = null;
+  installBanner.style.display = "none";
+});
+
+installDismiss?.addEventListener("click", () => {
+  installBanner.style.display = "none";
+});
+
+window.addEventListener("appinstalled", () => {
+  installBanner.style.display = "none";
+  deferredPrompt = null;
+});
+
+
+// ═══════════════════════════════════════
+//  Service Worker Registration
+// ═══════════════════════════════════════
+
+if ("serviceWorker" in navigator) {
+  navigator.serviceWorker.register("sw.js").catch(() => {});
+}
+
+
+// ═══════════════════════════════════════
+//  Initial Render
+// ═══════════════════════════════════════
+
+render();
+
+</script>
+</body>
+</html>
